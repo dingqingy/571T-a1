@@ -1,5 +1,5 @@
 CC=nvcc
-TARGET=matrix_mul
+TARGET=d_relu
 
 .PHONY: run, clean
 all:
