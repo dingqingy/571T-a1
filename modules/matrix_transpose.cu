@@ -53,6 +53,7 @@ int main(){
 
     // Executing kernel
     dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
+    // Note x dim (rid) mapped to OUT_WIDTH
     dim3 dimGrid(OUT_WIDTH / BLOCK_SIZE + 1, IN_WIDTH / BLOCK_SIZE + 1);
     matrix_transpose<<<dimGrid,dimBlock>>>(d_out, d_in, IN_WIDTH, OUT_WIDTH);
     
