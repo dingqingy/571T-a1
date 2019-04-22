@@ -37,6 +37,12 @@ __global__ void matrix_mul(float *d_C, float *d_A, float *d_B, int d_a_height, i
     }
 }
 
+float float_rand( float min, float max )
+{
+    float scale = rand() / (float) RAND_MAX; 
+    return min + scale * ( max - min );      
+}
+
 int main(){
     float *h_A, *h_B, *h_C;
     float *d_A, *d_B, *d_C;
@@ -63,10 +69,10 @@ int main(){
     
     /***       TEST 2    ***/
     for (int i = 0; i< A_N; i++){
-        h_A[i] = (float) (i+1);
+        h_A[i] = float_rand(-1, 1);
     }
     for (int i = 0; i< B_N; i++){
-        h_B[i] = (float) (i+1);
+        h_B[i] = float_rand(-1, 1);
     }
 
     // Allocate device memory
