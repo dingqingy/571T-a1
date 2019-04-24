@@ -1,5 +1,5 @@
 CC=nvcc
-TARGET=forward
+TARGET=forwardBackward
 
 .PHONY: run, clean
 all:

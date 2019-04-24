@@ -74,6 +74,20 @@ __global__ void relu_matrix_mul(double *d_C, double *d_A, double *d_B, int d_a_h
     }
 }
 
+__global__ void d_relu_matrix_mul(double *d_C, double *d_A, double *d_B, double *d_act, int d_a_height, int d_a_width, int d_b_width) {
+    int cid = blockIdx.y * blockDim.y + threadIdx.y;
+    int rid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(rid < d_a_height && cid < d_b_width){
+    // sum: to evaluated dot product
+        double sum = 0.0;
+        for(int k = 0; k < d_a_width; k++){
+            sum += d_A[rid * d_a_width + k] * d_B[d_b_width*k + cid];
+        }
+        d_C[rid * d_b_width + cid] = (d_act[rid * d_b_width + cid]>0)?sum:0;
+    }
+}
+
 __global__ void matrix_transpose(double *d_out, double *d_in, int d_in_width, int d_out_width) {
     int cid = blockIdx.y * blockDim.y + threadIdx.y;
     int rid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -90,10 +104,10 @@ __global__ void vector_sub(double *out, double *a, double *b, int n) {
     }
 }
 
-__global__ void relu(double *out, double *in, int n) {
+__global__ void d_relu(double *out, double *in, double *act, int n) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid < n){
-        out[tid] = (in[tid]>0)?in[tid]:0;
+        out[tid] = (act[tid]>0)?in[tid]:0;
     }
 }
 
@@ -115,6 +129,9 @@ int main(){
     h_yhat = (double*)malloc(sizeof(double) * N);
     h_y = (double*)malloc(sizeof(double) * N);
     h_error = (double*)malloc(sizeof(double) * N);
+    h_grad_v = (double*)malloc(sizeof(double) * V_N);
+    h_grad_Z = (double*)malloc(sizeof(double) * Z_N);
+    h_grad_p = (double*)malloc(sizeof(double) * Z_N);
     // h_ref = (double*)malloc(sizeof(double) * N);
 
     // Initialize host arrays
@@ -133,7 +150,7 @@ int main(){
     for(int i = 0; i < V_HEIGHT; i++){
         h_v[i] = (double)(i+1);
     }
-    for(int i = 0; i < V_HEIGHT; i++){
+    for(int i = 0; i < N; i++){
         h_y[i] = (double)(i+1);
     }
     
@@ -156,6 +173,9 @@ int main(){
     cudaMalloc((void**)&d_yhat, sizeof(double) * N);
     cudaMalloc((void**)&d_y, sizeof(double) * N);
     cudaMalloc((void**)&d_error, sizeof(double) * N);
+    cudaMalloc((void**)&d_grad_v, sizeof(double) * V_N);
+    cudaMalloc((void**)&d_grad_Z, sizeof(double) * Z_N);
+    cudaMalloc((void**)&d_grad_p, sizeof(double) * Z_N);
 
     // Transfer data from host to device memory
     cudaMemcpy(d_X, h_X, sizeof(double) * X_N, cudaMemcpyHostToDevice);
@@ -180,19 +200,34 @@ int main(){
     
     // backwards:
     vector_sub<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_error, d_y, d_yhat, N);
+    
+    dim3 dimGrid5(K / BLOCK_SIZE + 1, 1 / BLOCK_SIZE + 1);
+    matrix_mul<<<dimGrid5,dimBlock>>>(d_grad_v, d_Z_T, d_error, K, N, 1);
+    
+    // dim3 dimGrid6(N / BLOCK_SIZE + 1, K / BLOCK_SIZE + 1);
+    // matrix_mul<<<dimGrid6,dimBlock>>>(d_grad_Z, d_error, d_v, N, 1, K);
+    
+    dim3 dimGrid6(N / BLOCK_SIZE + 1, K / BLOCK_SIZE + 1);
+    d_relu_matrix_mul<<<dimGrid6,dimBlock>>>(d_grad_Z, d_error, d_v, d_Z, N, 1, K);
+    cudaMemcpy(h_grad_Z, d_grad_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(h_Z, d_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
+    
+    // d_relu<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_grad_p, d_grad_Z, d_Z, N);
     // Transfer data back to host memory
-    cudaMemcpy(h_error, d_error, sizeof(double) * N, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(h_grad_p, d_grad_p, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(h_Z, d_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
 
     // Verification
     for(int i = 0; i < N; i++){
-        for(int j = 0; j < 1; j++){
+        for(int j = 0; j < K; j++){
             // double sum = 0.0;
             // for(int k = 0; k < A_WIDTH; k++){
             //     sum += h_A[i*A_WIDTH+k] * h_B[k*B_WIDTH + j];
             // }
             // h_ref[i * C_WIDTH + j] = sum;
             // assert(fabs(h_ref[i*C_WIDTH + j] - h_C[i * C_WIDTH + j]) < MAX_ERR);
-            printf("h_error[%d][%d] = %f\n", i, j, h_error[i * 1 + j]);
+            printf("h_grad_Z[%d][%d] = %f\n", i, j, h_grad_Z[i * K + j]);
+            // printf("h_Z[%d][%d] = %f\n", i, j, h_Z[i * K + j]);
             // printf("h_ref[%d][%d] = %f\n", i, j, h_ref[i * C_WIDTH + j]);
         }
     }
@@ -206,6 +241,11 @@ int main(){
     cudaFree(d_Z);
     cudaFree(d_Z_T);
     cudaFree(d_yhat);
+    cudaFree(d_y);
+    cudaFree(d_error);
+    cudaFree(d_grad_v);
+    cudaFree(d_grad_Z);
+    cudaFree(d_grad_p);
 
     // Deallocate host memory
     free(h_X); 
@@ -214,4 +254,9 @@ int main(){
     free(h_Z);
     free(h_Z_T);
     free(h_yhat);
+    free(h_y);
+    free(h_error);
+    free(h_grad_v);
+    free(h_grad_Z);
+    free(h_grad_p);
 }
