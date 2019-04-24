@@ -1,5 +1,5 @@
 CC=nvcc
-TARGET=forwardBackward
+TARGET=singleIter
 
 .PHONY: run, clean
 all:
