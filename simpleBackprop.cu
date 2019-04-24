@@ -21,9 +21,9 @@ def forwardBackward(X, y, W, v):
 */
 
 /* Parameter Setup */
-#define N 4 // # of input samples
-#define D 2 // # of input neurons
-#define K 3 // # of hidden neurons
+#define N 1000 // # of input samples
+#define D 15 // # of input neurons
+#define K 20 // # of hidden neurons
 #define STEP 0.001 // learning rate or step size
 
 // X: input matrix (n * d)
@@ -146,6 +146,7 @@ int main(){
     // Initialize host arrays
     
     /***       TEST 1    ***/
+    /*
     for(int i = 0; i < X_N; i++){
         if(i == 1 || i == 3){
             h_X[i] = (double)(-i-1);
@@ -162,15 +163,25 @@ int main(){
     for(int i = 0; i < N; i++){
         h_y[i] = (double)(i+1);
     }
+    */
     
     /***       TEST 2    ***/
-    // rand((unsigned int)time(NULL));
-    // for (int i = 0; i< A_N; i++){
-    //     h_A[i] = (double)rand()/(double)(RAND_MAX);
-    // }
-    // for (int i = 0; i< B_N; i++){
-    //     h_B[i] = (double)rand()/(double)(RAND_MAX);
-    // }
+    srand((unsigned int)time(NULL));
+    // random uniform from [-a, a]
+    double a = 1.0;
+    for (int i = 0; i< X_N; i++){
+        h_X[i] = -a + (double)rand()/(double)(RAND_MAX)*a;
+    }
+    for (int i = 0; i< W_N; i++){
+        h_W[i] = -a + (double)rand()/(double)(RAND_MAX)*a;
+    }
+
+    for (int i = 0; i< V_N; i++){
+        h_v[i] = -a + (double)rand()/(double)(RAND_MAX)*a;
+    }
+    for (int i = 0; i< N; i++){
+        h_y[i] = -a + (double)rand()/(double)(RAND_MAX)*a;
+    }
 
     // Allocate device memory
     cudaMalloc((void**)&d_X, sizeof(double) * X_N);
@@ -194,7 +205,7 @@ int main(){
     cudaMemcpy(d_v, h_v, sizeof(double) * V_N, cudaMemcpyHostToDevice);
     cudaMemcpy(d_y, h_y, sizeof(double) * N, cudaMemcpyHostToDevice);
 
-    int iters = 2;
+    int iters = 20;
     for (int i = 0; i < iters; i++){
         // Executing kernel
         dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
