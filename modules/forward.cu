@@ -16,9 +16,9 @@ def forward(X, W, v):
 */
 
 /* Parameter Setup */
-#define N 300 // # of input samples
-#define D 14 // # of input neurons
-#define K 20 // # of hidden neurons
+#define N 4 // # of input samples
+#define D 2 // # of input neurons
+#define K 3 // # of hidden neurons
 
 // X: input matrix (n * d)
 #define X_HEIGHT N
@@ -68,7 +68,7 @@ __global__ void relu_matrix_mul(double *d_C, double *d_A, double *d_B, int d_a_h
     }
 }
 
-__global__ void matrix_transpose(float *d_out, float *d_in, int d_in_width, int d_out_width) {
+__global__ void matrix_transpose(double *d_out, double *d_in, int d_in_width, int d_out_width) {
     int cid = blockIdx.y * blockDim.y + threadIdx.y;
     int rid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -79,33 +79,34 @@ __global__ void matrix_transpose(float *d_out, float *d_in, int d_in_width, int 
 
 int main(){
     double *h_X, *h_W, *h_v;
-    double *h_Z_T, *d_Z_T; // intermediate testing
+    double *h_Z, *h_Z_T, *h_yhat;
     double *d_X, *d_X_T, *d_W, *d_v;
-    // double *d_Z, *d_Z_T, h_yhat, d_yhat;
+    double *d_Z, *d_Z_T, *d_yhat;
     // double *h_ref; // compute verified results
     // Allocate host memory
     h_X = (double*)malloc(sizeof(double) * X_N);
     h_W = (double*)malloc(sizeof(double) * W_N);
     h_v = (double*)malloc(sizeof(double) * V_N);
     h_Z_T = (double*)malloc(sizeof(double) * Z_N);
-    // h_yhat = (double*)malloc(sizeof(double) * N);
+    h_Z = (double*)malloc(sizeof(double) * Z_N);
+    h_yhat = (double*)malloc(sizeof(double) * N);
     // h_ref = (double*)malloc(sizeof(double) * N);
 
     // Initialize host arrays
     
     /***       TEST 1    ***/
-    for(int i = 0; i < X_HEIGHT; i++){
-        for(int j = 0; j < X_WIDTH; j++){
-            h_X[i*X_WIDTH + j] = (float)i;
+    for(int i = 0; i < X_N; i++){
+        if(i == 1 || i == 3){
+            h_X[i] = (double)(-i-1);
+        } else{
+            h_X[i] = (double)(i+1);
         }
     }
-    for(int i = 0; i < W_HEIGHT; i++){
-        for(int j = 0; j < W_WIDTH; j++){
-            h_W[i*W_WIDTH + j] = (float)i;
-        }
+    for(int i = 0; i < W_N; i++){
+        h_W[i] = double(i+1);
     }
     for(int i = 0; i < V_HEIGHT; i++){
-        h_v[i] = (float)i;
+        h_v[i] = (double)(i+1);
     }
     
     /***       TEST 2    ***/
@@ -120,11 +121,11 @@ int main(){
     // Allocate device memory
     cudaMalloc((void**)&d_X, sizeof(double) * X_N);
     cudaMalloc((void**)&d_X_T, sizeof(double) * X_N);
-    // cudaMalloc((void**)&d_Z, sizeof(double) * Z_N);
+    cudaMalloc((void**)&d_Z, sizeof(double) * Z_N);
     cudaMalloc((void**)&d_Z_T, sizeof(double) * Z_N);
     cudaMalloc((void**)&d_W, sizeof(double) * W_N);
     cudaMalloc((void**)&d_v, sizeof(double) * V_N);
-    // cudaMalloc((void**)&d_yhat, sizeof(double) * N);
+    cudaMalloc((void**)&d_yhat, sizeof(double) * N);
 
     // Transfer data from host to device memory
     cudaMemcpy(d_X, h_X, sizeof(double) * X_N, cudaMemcpyHostToDevice);
@@ -134,26 +135,30 @@ int main(){
     // Executing kernel
     dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
     // X_HEIGHT (N) corresponding to OUT_WIDTH, X_WIDTH (D) corresponding to IN_WIDTH
-    dim3 dimGrid(X_HEIGHT / BLOCK_SIZE + 1, X_WIDTH / BLOCK_SIZE + 1);
-    matrix_transpose<<<dimGrid,dimBlock>>>(d_X_T, d_X, X_WIDTH, X_HEIGHT);
+    dim3 dimGrid1(N / BLOCK_SIZE + 1,D / BLOCK_SIZE + 1);
+    matrix_transpose<<<dimGrid1,dimBlock>>>(d_X_T, d_X, D, N);
     
-    // Note C_mat row maps to x dimension, and col maps to y dimension
-    dim3 dimGrid(K / BLOCK_SIZE + 1, N / BLOCK_SIZE + 1);
-    relu_matrix_mul<<<dimGrid,dimBlock>>>(d_Z_T, d_W, d_X_T, K, D, N);
+    dim3 dimGrid2(K / BLOCK_SIZE + 1, N / BLOCK_SIZE + 1);
+    relu_matrix_mul<<<dimGrid2,dimBlock>>>(d_Z_T, d_W, d_X_T, K, D, N);
     
+    dim3 dimGrid3(K / BLOCK_SIZE + 1, N / BLOCK_SIZE + 1);
+    matrix_transpose<<<dimGrid3,dimBlock>>>(d_Z, d_Z_T, N, K);
+    
+    dim3 dimGrid4(N / BLOCK_SIZE + 1, 1 / BLOCK_SIZE + 1);
+    matrix_mul<<<dimGrid4,dimBlock>>>(d_yhat, d_Z, d_v, N, K, 1);
     // Transfer data back to host memory
-    cudaMemcpy(h_Z_T, d_Z_T, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_yhat, d_yhat, sizeof(double) * N, cudaMemcpyDeviceToHost);
 
     // Verification
-    for(int i = 0; i < K; i++){
-        for(int j = 0; j < N; j++){
+    for(int i = 0; i < N; i++){
+        for(int j = 0; j < 1; j++){
             // double sum = 0.0;
             // for(int k = 0; k < A_WIDTH; k++){
             //     sum += h_A[i*A_WIDTH+k] * h_B[k*B_WIDTH + j];
             // }
             // h_ref[i * C_WIDTH + j] = sum;
             // assert(fabs(h_ref[i*C_WIDTH + j] - h_C[i * C_WIDTH + j]) < MAX_ERR);
-            printf("h_Z_T[%d][%d] = %f\n", i, j, h_Z_T[i * N + j]);
+            printf("h_yhat[%d][%d] = %f\n", i, j, h_yhat[i * 1 + j]);
             // printf("h_ref[%d][%d] = %f\n", i, j, h_ref[i * C_WIDTH + j]);
         }
     }
@@ -164,11 +169,15 @@ int main(){
     cudaFree(d_X_T);
     cudaFree(d_W);
     cudaFree(d_v);
-    cudaFree(h_Z_T);
+    cudaFree(d_Z);
+    cudaFree(d_Z_T);
+    cudaFree(d_yhat);
 
     // Deallocate host memory
     free(h_X); 
     free(h_W);
     free(h_v);
+    free(h_Z);
     free(h_Z_T);
+    free(h_yhat);
 }

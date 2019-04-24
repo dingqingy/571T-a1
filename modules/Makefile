@@ -1,5 +1,5 @@
 CC=nvcc
-TARGET=d_relu
+TARGET=forward
 
 .PHONY: run, clean
 all:
