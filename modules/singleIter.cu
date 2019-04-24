@@ -112,14 +112,20 @@ __global__ void update(double *d_weights, double *d_grads, double step, int n) {
     }
 }
 
+__global__ void square(double *out, double *in,  int n) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid < n){
+        out[tid] = in[tid] * in[tid];
+    }
+}
 int main(){
     // forward variables
     double *h_X, *h_X_T, *h_W, *h_Z, *h_Z_T, *h_v, *h_yhat, *h_y;
     double *d_X, *d_X_T, *d_W, *d_Z, *d_Z_T, *d_v, *d_yhat, *d_y;
 
     // backward variables
-    double *h_error, *h_grad_v, *h_grad_Z, *h_grad_p_T, *h_grad_W;
-    double *d_error, *d_grad_v, *d_grad_Z, *d_grad_p_T, *d_grad_W;
+    double *h_error, *h_grad_v, *h_grad_Z, *h_grad_p_T, *h_grad_W, *h_err_sq;
+    double *d_error, *d_grad_v, *d_grad_Z, *d_grad_p_T, *d_grad_W, *d_err_sq;
     // double *h_ref; // compute verified results
     // Allocate host memory
     h_X = (double*)malloc(sizeof(double) * X_N);
@@ -134,6 +140,7 @@ int main(){
     h_grad_Z = (double*)malloc(sizeof(double) * Z_N);
     h_grad_p_T = (double*)malloc(sizeof(double) * Z_N);
     h_grad_W = (double*)malloc(sizeof(double) * W_N);
+    h_err_sq = (double*)malloc(sizeof(double) * N);
     // h_ref = (double*)malloc(sizeof(double) * N);
 
     // Initialize host arrays
@@ -179,6 +186,7 @@ int main(){
     cudaMalloc((void**)&d_grad_Z, sizeof(double) * Z_N);
     cudaMalloc((void**)&d_grad_p_T, sizeof(double) * Z_N);
     cudaMalloc((void**)&d_grad_W, sizeof(double) * W_N);
+    cudaMalloc((void**)&d_err_sq, sizeof(double) * N);
 
     // Transfer data from host to device memory
     cudaMemcpy(d_X, h_X, sizeof(double) * X_N, cudaMemcpyHostToDevice);
@@ -221,12 +229,15 @@ int main(){
     update<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_v, d_grad_v, (STEP/N), V_N);
     cudaMemcpy(h_W, d_W, sizeof(double) * W_N, cudaMemcpyDeviceToHost);
     cudaMemcpy(h_v, d_v, sizeof(double) * V_N, cudaMemcpyDeviceToHost);
-    // cudaMemcpy(h_Z, d_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
-    
-    // d_relu<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_grad_p, d_grad_Z, d_Z, N);
-    // Transfer data back to host memory
-    // cudaMemcpy(h_grad_p, d_grad_p, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
-    // cudaMemcpy(h_Z, d_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
+
+    // get MSE back
+    square<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_err_sq, d_error, N);
+    cudaMemcpy(h_err_sq, d_err_sq, sizeof(double) * N, cudaMemcpyDeviceToHost);
+    double sum = 0.0;
+    for(int i = 0; i < N; i++){
+        sum += h_err_sq[i];
+    }
+    printf("MSE is %f\n", sum / N);
 
     // Verification
     for(int i = 0; i < K; i++){
@@ -261,6 +272,7 @@ int main(){
     cudaFree(d_grad_Z);
     cudaFree(d_grad_p_T);
     cudaFree(d_grad_W);
+    cudaFree(d_err_sq);
 
     // Deallocate host memory
     free(h_X); 
@@ -275,4 +287,5 @@ int main(){
     free(h_grad_Z);
     free(h_grad_p_T);
     free(h_grad_W);
+    free(h_err_sq);
 }
