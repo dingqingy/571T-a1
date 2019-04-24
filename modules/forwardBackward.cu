@@ -117,8 +117,8 @@ int main(){
     double *d_X, *d_X_T, *d_W, *d_Z, *d_Z_T, *d_v, *d_yhat, *d_y;
 
     // backward variables
-    double *h_error, *h_grad_v, *h_grad_Z, *h_grad_p, *h_grad_p_T, *h_grad_W;
-    double *d_error, *d_grad_v, *d_grad_Z, *d_grad_p, *d_grad_p_T, *d_grad_W;
+    double *h_error, *h_grad_v, *h_grad_Z, *h_grad_p_T, *h_grad_W;
+    double *d_error, *d_grad_v, *d_grad_Z, *d_grad_p_T, *d_grad_W;
     // double *h_ref; // compute verified results
     // Allocate host memory
     h_X = (double*)malloc(sizeof(double) * X_N);
@@ -131,7 +131,8 @@ int main(){
     h_error = (double*)malloc(sizeof(double) * N);
     h_grad_v = (double*)malloc(sizeof(double) * V_N);
     h_grad_Z = (double*)malloc(sizeof(double) * Z_N);
-    h_grad_p = (double*)malloc(sizeof(double) * Z_N);
+    h_grad_p_T = (double*)malloc(sizeof(double) * Z_N);
+    h_grad_W = (double*)malloc(sizeof(double) * W_N);
     // h_ref = (double*)malloc(sizeof(double) * N);
 
     // Initialize host arrays
@@ -175,7 +176,8 @@ int main(){
     cudaMalloc((void**)&d_error, sizeof(double) * N);
     cudaMalloc((void**)&d_grad_v, sizeof(double) * V_N);
     cudaMalloc((void**)&d_grad_Z, sizeof(double) * Z_N);
-    cudaMalloc((void**)&d_grad_p, sizeof(double) * Z_N);
+    cudaMalloc((void**)&d_grad_p_T, sizeof(double) * Z_N);
+    cudaMalloc((void**)&d_grad_W, sizeof(double) * W_N);
 
     // Transfer data from host to device memory
     cudaMemcpy(d_X, h_X, sizeof(double) * X_N, cudaMemcpyHostToDevice);
@@ -199,17 +201,20 @@ int main(){
     matrix_mul<<<dimGrid4,dimBlock>>>(d_yhat, d_Z, d_v, N, K, 1);
     
     // backwards:
-    vector_sub<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_error, d_y, d_yhat, N);
+    vector_sub<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_error, d_yhat, d_y, N);
     
     dim3 dimGrid5(K / BLOCK_SIZE + 1, 1 / BLOCK_SIZE + 1);
     matrix_mul<<<dimGrid5,dimBlock>>>(d_grad_v, d_Z_T, d_error, K, N, 1);
     
-    // dim3 dimGrid6(N / BLOCK_SIZE + 1, K / BLOCK_SIZE + 1);
-    // matrix_mul<<<dimGrid6,dimBlock>>>(d_grad_Z, d_error, d_v, N, 1, K);
-    
     dim3 dimGrid6(N / BLOCK_SIZE + 1, K / BLOCK_SIZE + 1);
     d_relu_matrix_mul<<<dimGrid6,dimBlock>>>(d_grad_Z, d_error, d_v, d_Z, N, 1, K);
-    cudaMemcpy(h_grad_Z, d_grad_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
+    
+    dim3 dimGrid7(N / BLOCK_SIZE + 1, K / BLOCK_SIZE + 1);
+    matrix_transpose<<<dimGrid7,dimBlock>>>(d_grad_p_T, d_grad_Z, K, N);
+    
+    dim3 dimGrid8(K / BLOCK_SIZE + 1, D / BLOCK_SIZE + 1);
+    matrix_mul<<<dimGrid8,dimBlock>>>(d_grad_W, d_grad_p_T, d_X, K, N, D);
+    cudaMemcpy(h_grad_W, d_grad_W, sizeof(double) * W_N, cudaMemcpyDeviceToHost);
     // cudaMemcpy(h_Z, d_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
     
     // d_relu<<<N / LINEAR_BLOCK_SIZE + 1, LINEAR_BLOCK_SIZE>>>(d_grad_p, d_grad_Z, d_Z, N);
@@ -218,15 +223,15 @@ int main(){
     // cudaMemcpy(h_Z, d_Z, sizeof(double) * Z_N, cudaMemcpyDeviceToHost);
 
     // Verification
-    for(int i = 0; i < N; i++){
-        for(int j = 0; j < K; j++){
+    for(int i = 0; i < K; i++){
+        for(int j = 0; j < D; j++){
             // double sum = 0.0;
             // for(int k = 0; k < A_WIDTH; k++){
             //     sum += h_A[i*A_WIDTH+k] * h_B[k*B_WIDTH + j];
             // }
             // h_ref[i * C_WIDTH + j] = sum;
             // assert(fabs(h_ref[i*C_WIDTH + j] - h_C[i * C_WIDTH + j]) < MAX_ERR);
-            printf("h_grad_Z[%d][%d] = %f\n", i, j, h_grad_Z[i * K + j]);
+            printf("h_grad_W[%d][%d] = %f\n", i, j, h_grad_W[i * D + j]);
             // printf("h_Z[%d][%d] = %f\n", i, j, h_Z[i * K + j]);
             // printf("h_ref[%d][%d] = %f\n", i, j, h_ref[i * C_WIDTH + j]);
         }
@@ -245,7 +250,8 @@ int main(){
     cudaFree(d_error);
     cudaFree(d_grad_v);
     cudaFree(d_grad_Z);
-    cudaFree(d_grad_p);
+    cudaFree(d_grad_p_T);
+    cudaFree(d_grad_W);
 
     // Deallocate host memory
     free(h_X); 
@@ -258,5 +264,6 @@ int main(){
     free(h_error);
     free(h_grad_v);
     free(h_grad_Z);
-    free(h_grad_p);
+    free(h_grad_p_T);
+    free(h_grad_W);
 }
