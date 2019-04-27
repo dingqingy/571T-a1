@@ -120,7 +120,7 @@ __global__ void square(double *out, double *in,  int n) {
 }
 int main(){
     // forward variables
-    double *h_X, *h_X_T, *h_W, *h_Z, *h_Z_T, *h_v, *h_yhat, *h_y;
+    double *h_X, *h_W, *h_Z, *h_Z_T, *h_v, *h_yhat, *h_y;
     double *d_X, *d_X_T, *d_W, *d_Z, *d_Z_T, *d_v, *d_yhat, *d_y;
 
     // backward variables

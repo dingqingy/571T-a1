@@ -21,9 +21,9 @@ def forwardBackward(X, y, W, v):
 */
 
 /* Parameter Setup */
-#define N 1000 // # of input samples
-#define D 15 // # of input neurons
-#define K 20 // # of hidden neurons
+#define N 32 // # of input samples
+#define D 32 // # of input neurons
+#define K 32// # of hidden neurons
 #define STEP 0.001 // learning rate or step size
 
 // X: input matrix (n * d)
@@ -132,7 +132,7 @@ __global__ void relu_matrix_mul_shared(double *d_C, double *d_A, double *d_B, in
     }
 
     if(rid < d_a_height && cid < d_b_width)
-        d_C[rid * d_b_width + cid] = (sum>0):sum:0;
+        d_C[rid * d_b_width + cid] = (sum>0)?sum:0;
 }
 
 __global__ void d_relu_matrix_mul_shared(double *d_C, double *d_A, double *d_B, double *d_act, int d_a_height, int d_a_width, int d_b_width) {
@@ -176,7 +176,7 @@ __global__ void d_relu_matrix_mul_shared(double *d_C, double *d_A, double *d_B, 
     }
 
     if(rid < d_a_height && cid < d_b_width)
-        d_C[rid * d_b_width + cid] = (d_act[rid * d_b_width + cid]>0):sum:0;
+        d_C[rid * d_b_width + cid] = (d_act[rid * d_b_width + cid]>0)?sum:0;
 }
 
 
@@ -211,7 +211,7 @@ __global__ void square(double *out, double *in,  int n) {
 }
 int main(){
     // forward variables
-    double *h_X, *h_X_T, *h_W, *h_Z, *h_Z_T, *h_v, *h_yhat, *h_y;
+    double *h_X, *h_W, *h_Z, *h_Z_T, *h_v, *h_yhat, *h_y;
     double *d_X, *d_X_T, *d_W, *d_Z, *d_Z_T, *d_v, *d_yhat, *d_y;
 
     // backward variables
