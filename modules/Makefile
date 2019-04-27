@@ -1,5 +1,5 @@
 CC=nvcc
-TARGET=simpleBackprop
+TARGET=matrix_mul_shared
 
 .PHONY: run, clean
 all:

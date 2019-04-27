@@ -8,12 +8,12 @@
 
 // matrix multiplication: C = AB
 // A
-#define A_HEIGHT 1024 
-#define A_WIDTH 1024 
+#define A_HEIGHT 1000 
+#define A_WIDTH 14 
 #define A_N A_HEIGHT * A_WIDTH 
 // B
 #define B_HEIGHT A_WIDTH
-#define B_WIDTH 1024 
+#define B_WIDTH 20 
 #define B_N B_HEIGHT * B_WIDTH
 
 // C
@@ -29,21 +29,17 @@ __global__ void matrix_mul_shared(double *d_C, double *d_A, double *d_B, int d_a
     int cid = blockIdx.y * blockDim.y + threadIdx.y;
     int rid = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // block position
-    int c_block = blockIdx.y;
-    int r_block = blockIdx.x;
-
     // thread position in the block
     int c_thread = threadIdx.y;
     int r_thread = threadIdx.x;
 
+    double sum = 0.0;
+
     __shared__ double d_A_sub[BLOCK_SIZE][BLOCK_SIZE];
     __shared__ double d_B_sub[BLOCK_SIZE][BLOCK_SIZE];
 
-    double sum = 0.0;
-
     // iterate over tiles across horizontal direction of A
-    for(k = 0; k<(d_a_width+1)/BLOCK_SIZE + 1; k++){
+    for(int k = 0; k<(d_a_width-1)/BLOCK_SIZE + 1; k++){
         // load d_A[rid, k*BLOCK_SIZE+c_thread] into d_A_sub[r_thread][c_thread]
         if((rid < d_a_height) && (k*BLOCK_SIZE+c_thread < d_a_width)){
             d_A_sub[r_thread][c_thread] = d_A[rid*d_a_width + k*BLOCK_SIZE+c_thread];
@@ -61,13 +57,14 @@ __global__ void matrix_mul_shared(double *d_C, double *d_A, double *d_B, int d_a
         __syncthreads();
 
         // dot product within a tile
-        for(i = 0; i<d_a_width; i++){
+        for(int i = 0; i<d_a_width; i++){
             sum += d_A_sub[r_thread][i] * d_B_sub[i][c_thread];
         }
 
         __syncthreads();
     }
 
+    // printf("%f\n", sum);
     // write sum back
     if(rid < d_a_height && cid < d_b_width)
         d_C[rid * d_b_width + cid] = sum;
@@ -105,11 +102,12 @@ int main(){
     
     srand((unsigned int)time(NULL));
     /***       TEST 2    ***/
+    double a = 2.0;
     for (int i = 0; i< A_N; i++){
-        h_A[i] = (double)rand()/(double)(RAND_MAX);
+        h_A[i] = -1.0 + (double)rand()/(double)(RAND_MAX)*a;
     }
     for (int i = 0; i< B_N; i++){
-        h_B[i] = (double)rand()/(double)(RAND_MAX);
+        h_B[i] = -1.0 + (double)rand()/(double)(RAND_MAX)*a;
     }
 
     // Allocate device memory
@@ -126,8 +124,8 @@ int main(){
     
     // Note C_mat row maps to x dimension, and col maps to y dimension
     dim3 dimGrid(C_HEIGHT / BLOCK_SIZE + 1, C_WIDTH / BLOCK_SIZE + 1);
-    // dim3 dimGrid(2, 1);
-    matrix_mul<<<dimGrid,dimBlock>>>(d_C, d_A, d_B, A_HEIGHT, A_WIDTH, B_WIDTH);
+    // dim3 dimGrid(2, 2);
+    matrix_mul_shared<<<dimGrid,dimBlock, dimBlock.x*dimBlock.y*sizeof(double)>>>(d_C, d_A, d_B, A_HEIGHT, A_WIDTH, B_WIDTH);
     
     // Transfer data back to host memory
     cudaMemcpy(h_C, d_C, sizeof(double) * C_N, cudaMemcpyDeviceToHost);
